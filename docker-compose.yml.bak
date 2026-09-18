@@ -1,0 +1,36 @@
+services:
+  opencode:
+    image: ghcr.io/anomalyco/opencode:latest
+    container_name: opencode
+
+    ports:
+      - "5001:5001"
+
+    volumes:
+      # - ./project:/workspace
+      - .:/workspace
+      - opencode-data:/root/.local/share/opencode
+      - opencode-config:/root/.config/opencode
+
+    working_dir: /workspace
+
+    environment:
+      # OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        SKILLS_DIR="/root/.config/opencode/skills"
+        mkdir -p "$SKILLS_DIR/find-skills"
+        wget -qO "$SKILLS_DIR/find-skills/SKILL.md" \
+          https://raw.githubusercontent.com/vercel-labs/skills/main/skills/find-skills/SKILL.md
+        exec opencode web --hostname 0.0.0.0 --port 5001
+
+    restart: unless-stopped
+
+volumes:
+  opencode-data:
+  opencode-config:

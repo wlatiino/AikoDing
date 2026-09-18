@@ -1,0 +1,76 @@
+services:
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opencode
+    ports:
+      - "5001:5001"
+    volumes:
+      - .:/workspace
+      - opencode-data:/root/.local/share/opencode
+      - opencode-config:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      # --- Kredensial Login Browser ---
+      OPENCODE_SERVER_USERNAME: "${OPENCODE_SERVER_USERNAME}"
+      OPENCODE_SERVER_PASSWORD: "${OPENCODE_SERVER_PASSWORD}"
+      
+      # --- Provider API Key ---
+      OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
+      # OPENAI_API_KEY: "${OPENCODE_API_KEY}"
+      # OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
+      
+      # Model ditentukan via Environment Variable
+      OPENCODE_MODEL: "big-pickle"
+    # Dihapus --model dari command agar tidak menolak startup
+    command: opencode serve --hostname 0.0.0.0 --port 5001
+    restart: unless-stopped
+
+
+  # ── PostgreSQL (shared untuk portal & POS) ──
+  db:
+    image: postgres:16-alpine
+    container_name: db
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-aicoding}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./project/aicoding/Database:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  # # ── Backend portal AI coding ──
+  # aicoding-backend:
+  #   build:
+  #     context: ./project/aicoding/BackEnd
+  #   container_name: aicoding-backend
+  #   environment:
+  #     DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aicoding}
+  #     OPENCODE_URL: http://opencode:5001
+  #     SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+  #     ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+  #     FRONTEND_URL: http://localhost
+  #     PORT: "3001"
+  #   depends_on:
+  #     - db
+  #     - opencode
+  #   restart: unless-stopped
+
+  # # ── Frontend (nginx serve built React + proxy ke backend) ──
+  # aicoding-frontend:
+  #   build:
+  #     context: ./project/aicoding/FrontEnd
+  #   container_name: aicoding-frontend
+  #   ports:
+  #     - "${FRONTEND_PORT:-80}:80"
+  #   depends_on:
+  #     - aicoding-backend
+  #   restart: unless-stopped
+
+
+volumes:
+  opencode-data:
+  opencode-config:
+  pgdata:
