@@ -7,9 +7,12 @@ services:
     ports:
       - "5001:5001"
     volumes:
-      - .:/workspace
+      - ../:/workspace # diatas satu folder ini (work directory)
       - opencode-data:/root/.local/share/opencode
       - opencode-config:/root/.config/opencode
+      - gomodcache:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+      - gobin:/go/bin
     working_dir: /workspace
     environment:
       # --- Kredensial Login Browser ---
@@ -18,59 +21,82 @@ services:
       
       # --- Provider API Key ---
       OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
-      # OPENAI_API_KEY: "${OPENCODE_API_KEY}"
       # OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
       
       # Model ditentukan via Environment Variable
       OPENCODE_MODEL: "big-pickle"
+      # Go: cache module & build di volume terpisah agar persisten ketika rebuild
+      GOPATH: "/go"
     # Dihapus --model dari command agar tidak menolak startup
     command: opencode serve --hostname 0.0.0.0 --port 5001
     restart: unless-stopped
 
-
-  # ── PostgreSQL (shared untuk portal & POS) ──
-  db:
+  # ── PostgreSQL (myapp POS) ──
+  # Migration dijalankan otomatis dari ./Database saat db pertama dibuat.
+  myapp-db:
     image: postgres:16-alpine
-    container_name: db
+    container_name: myapp-db
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-aicoding}
+      POSTGRES_DB: ${DB_NAME:-myapp}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./project/aicoding/Database:/docker-entrypoint-initdb.d
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-myapp}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
-  # # ── Backend portal AI coding ──
-  # aicoding-backend:
-  #   build:
-  #     context: ./project/aicoding/BackEnd
-  #   container_name: aicoding-backend
-  #   environment:
-  #     DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aicoding}
-  #     OPENCODE_URL: http://opencode:5001
-  #     SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
-  #     ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-  #     FRONTEND_URL: http://localhost
-  #     PORT: "3001"
-  #   depends_on:
-  #     - db
-  #     - opencode
-  #   restart: unless-stopped
+  # ── Dev server frontend (Vite, HMR) ──
+  myapp-frontend:
+    image: node:24-alpine
+    container_name: myapp-frontend
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "${FE_PORT:-5002}:5002"
+    volumes:
+      - ../myapp-ai-fe:/app
+      - frontend-node_modules:/app/node_modules
+    environment:
+      VITE_PROXY_TARGET: "http://myapp-backend:3000"
+    depends_on:
+      myapp-backend:
+        condition: service_started
+    restart: unless-stopped
 
-  # # ── Frontend (nginx serve built React + proxy ke backend) ──
-  # aicoding-frontend:
-  #   build:
-  #     context: ./project/aicoding/FrontEnd
-  #   container_name: aicoding-frontend
-  #   ports:
-  #     - "${FRONTEND_PORT:-80}:80"
-  #   depends_on:
-  #     - aicoding-backend
-  #   restart: unless-stopped
+  # ── Dev server backend (Go, live-reload air) ──
+  myapp-backend:
+    image: golang:1.26-alpine
+    container_name: myapp-backend
+    working_dir: /app
+    command: sh -c "go install github.com/air-verse/air@latest && go mod download && air"
+    ports:
+      - "127.0.0.1:${BE_PORT:-3003}:3000"
+    volumes:
+      - ../myapp-ai-be:/app
+      - gomodcache:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+      - gobin:/go/bin
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@myapp-db:5432/${DB_NAME:-tokoapp}
+      PORT: "3000"
+      JWT_SECRET: ${BE_JWT_SECRET:-tokoapp-prod-secret-change-me}
+    depends_on:
+      myapp-db:
+        condition: service_healthy
+    restart: unless-stopped
 
 
 volumes:
   opencode-data:
   opencode-config:
-  pgdata:
+  gomodcache:
+  gocache:
+  gobin:
+  database:
+  frontend-node_modules:

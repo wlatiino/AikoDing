@@ -1,0 +1,59 @@
+
+sudo ufw status
+sudo ufw allow 5001/tcp
+
+sudo chown -R ubuntu:ubuntu .
+sudo chown -R user:user /var/opt/AppAse
+sudo chmod -R 755 /var/opt/AppAse
+
+
+-- keluar size file
+ls -lh
+du -sh opencodeai
+
+-- check space hardisk
+df -h /
+sudo du -h --max-depth=1 / 2>/dev/null | sort -hr
+sudo du -h --max-depth=1 /var 2>/dev/null | sort -hr
+sudo du -h --max-depth=2 /home 2>/dev/null | sort -hr
+
+-- rename file
+mv opencodeai.zip opencodeai_20260921.zip
+-- move file
+mv folderA folder
+
+-- zip folder
+tar -czvf opencodeai.tar.gz opencodeai/
+
+-- bersih cache visual source code
+rm -rf /home/ubuntu/.vscode-server
+
+
+git init
+git branch -M main
+git remote add origin https://github.com/abc/def.git
+git remote -v
+git remote set-url origin git@github-1:abc/def.git
+
+git branch tahap1
+
+
+sudo docker ps
+sudo docker system df -v
+
+-- ini akan hapus docker file yang tidak pakai lagi
+sudo docker system prune -a --volumes
+sudo docker volume prune
+
+sudo docker volume ls
+
+sudo docker logs -f opencode
+sudo docker logs -f --tail 50 opencode
+sudo docker logs myapp-db
+
+sudo docker stop namacontainer
+sudo docker compose down --remove-orphans
+
+-- Check status opencode
+sudo docker exec -it opencode opencode stats
+
