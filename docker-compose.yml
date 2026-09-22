@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
 
   # ── PostgreSQL (myapp POS) ──
-  # Migration dijalankan otomatis dari ./Database saat db pertama dibuat.
+  # Skema/seed tidak auto-run; jalankan manual dari host via myapp-ai-be/database/db-run.sh.
   myapp-db:
     image: postgres:16-alpine
     container_name: myapp-db
@@ -83,9 +83,9 @@ services:
       - gocache:/root/.cache/go-build
       - gobin:/go/bin
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@myapp-db:5432/${DB_NAME:-tokoapp}
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@myapp-db:5432/${DB_NAME:-myapp}
       PORT: "3000"
-      JWT_SECRET: ${BE_JWT_SECRET:-tokoapp-prod-secret-change-me}
+      JWT_SECRET: ${BE_JWT_SECRET:-myapp-prod-secret-change-me}
     depends_on:
       myapp-db:
         condition: service_healthy

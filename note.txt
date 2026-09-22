@@ -21,6 +21,11 @@ sudo du -h --max-depth=2 /home 2>/dev/null | sort -hr
 mv opencodeai.zip opencodeai_20260921.zip
 -- move file
 mv folderA folder
+-- copy file
+cp folderA folder
+-- hapus file
+rm folderA/abc.txt
+
 
 -- zip folder
 tar -czvf opencodeai.tar.gz opencodeai/

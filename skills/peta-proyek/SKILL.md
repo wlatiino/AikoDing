@@ -23,25 +23,28 @@ description: Peta proyek koordinasi folder di /workspace. Gunakan setiap kali ad
 
 - Stack dijalankan lewat `myapp-ai/docker-compose.yml`: `opencode` (port 5001), `myapp-db` (Postgres), `myapp-backend` (Go/Air, port 3000), `myapp-frontend` (Vite, port 5002).
 - Kerja cukup dengan mengedit file di folder yang sesuai. Jangan menaruh file di folder yang salah.
-- Aksi docker/git tidak bisa dijalankan dari dalam kontainer opencode — lihat bagian bawah.
+- `docker` bisa dijalankan langsung dari dalam kontainer opencode; `git` juga bisa tapi butuh izin (permission opencode) — lihat bagian bawah.
 
 ## Yang BISA dieksekusi dari sini
 
 - Inspeksi workspace: `ls`, `du`, read/grep/glob, dll.
+- `docker` (termasuk `docker compose`) bisa dieksekusi dari sini, contoh:
+  - start stack: `cd /workspace/myapp-ai && docker compose up -d`
+  - stop stack: `cd /workspace/myapp-ai && docker compose down --remove-orphans`
+  - cek log: `docker compose logs -f myapp-backend`
+  - eksekusi perintah di dalam container (mis. build Go): `docker compose exec myapp-backend go build -o /tmp/myapp-check .`
+- `git` juga tersedia untuk commit/push, tapi butuh izin (permission) dari user — jangan commit tanpa diminta.
 - `node` dan `npm` tersedia. Boleh menjalankan `npm` di `myapp-ai-fe` **hanya jika**:
   - kamu secara eksplisit meminta, **dan**
   - `package.json` ada di sana,
   - hindari menulis ke `node_modules`/`dist` dari sini (file bisa jadi milik root pada bind-mount host; `node_modules` yang dipakai dev-server berada di volume terpisah).
 
-## Yang TIDAK bisa dieksekusi dari sini
+## Yang TIDAK bisa dieksekusi dari sini (tanpa konteks container lain)
 
-Fakta lingkungan kontainer opencode: `docker`, `docker.sock`, `git`, `go`, `curl`, `bash`, `python3` — TIDAK tersedia. Jadi:
+Fakta lingkungan kontainer opencode: `go`, `curl`, `bash`, `python3` — TIDAK tersedia langsung di kontainer ini. Jadi:
 
-- **Jangan mencoba** `docker compose up/down`, `git add/commit`, atau sejenisnya dari sini — pasti gagal.
-- Kalau dibutuhkan, **cetak perintah lengkapnya** untuk dijalankan user di terminal host/VPS. Contoh:
-  - start stack: `cd /workspace/myapp-ai && docker compose up -d`
-  - stop stack: `cd /workspace/myapp-ai && docker compose down --remove-orphans`
-  - commit (repo masing-masing): `cd /workspace/myapp-ai && git add -A && git commit -m "..."`
+- `go build`/`go vet`/`air` jalankan lewat container backend: `docker compose exec myapp-backend go build -o /tmp/myapp-check .`.
+- Untuk `git`: tersedia tapi butuh izin (permission opencode). Bisa langsung `git add -A && git commit -m "..."` setelah user memberi izin; jangan commit tanpa diminta.
 
 ## Portability (VPS baru)
 
