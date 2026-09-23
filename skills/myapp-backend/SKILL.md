@@ -48,6 +48,14 @@ const base="http://myapp-backend:3000";
 - Login user seed: `admin@myapp.local / admin123` (OWNER), `budi@myapp.local / budi123` (USER).
 - **401 saat login setelah compose up** biasanya berarti DB belum di-seed (skema/seed tidak auto-run). Jalankan dari host: `cd /workspace/myapp-ai-be && ./database/db-run.sh`, lalu tes ulang.
 
+## Search API (`POST /api/<res>/search`) — dipakai semua halaman list FE
+
+- Frontend memanggil `POST /api/<res>/search` body `{ search, extra, sort, from, to }`; respons `{ data: rows }` (**bukan** `{data:{rows}}`) — FE baca `res.data?.data ?? []`.
+- Tiap resource punya `SearchX` di `internal/api/search.go` (meng-Copy ke `QueryParams`), handler terdaftar di `internal/api/router.go` (`/api/<res>/search`).
+- Query dibangun di `internal/store/query.go` via `sortOrder(qp, cols)` + `ilikeCols(search, cols, idx)` (semua kolom **pakai placeholder index SAMA**), lalu `ListX`/`SearchX` di `internal/store/*.go` menjalankan SELECT tanpa LIMIT — FE memaginasi **client-side** (`DataTable paginator :rows="10"`; klik next **tidak** menembak ulang API, itu normal).
+- **Sort wajib whitelist** — `query.go` define `productSortCols`, `partnerSortCols`, `salesSortCols`, `purchasesSortCols`, `userSortCols`, `menuSortCols` (map nama kolom → SQL, boleh `JOIN result qualifier`). Sort di luar whitelist → `ErrBadSort` → handler balas HTTP 400 `{error}`. Sort default: `name, id`.
+- Jika kolom ambigu saat join (mis. `add_on` ada di sales & journal): map sort ke qualifier tabel, e.g. `sortBy` value `"journal.add_on"`. Kueri diurutkan dengan `ORDER BY` dari sort, default fallback saat sort kosong.
+
 ## Aturan
 
 - Jangan ubah `myapp-ai/note.txt`, jangan sebarkan isi `myapp-ai/.env`.

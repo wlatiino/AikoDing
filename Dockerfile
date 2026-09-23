@@ -1,6 +1,8 @@
 FROM ghcr.io/anomalyco/opencode:latest
 
-RUN apk add --no-cache nodejs npm wget
+# RUN apk add --no-cache nodejs npm wget
+# RUN apk add --no-cache nodejs npm wget go
+RUN apk add --no-cache bash postgresql-client nodejs npm wget go
 
 RUN mkdir -p /opt/opencode-skills/find-skills \
     && wget -qO /opt/opencode-skills/find-skills/SKILL.md \

@@ -14,10 +14,11 @@ Konvensi file: satu concern per file di `schema/` — kalau bisa dipisah, satu t
 | Root DB     | `myapp-ai-be/database/`                           |
 | Migrations  | `schema/NNN_description.sql` (append-only)        |
 | Seed data   | `seed/` (terpisah, idempotent, bisa diulang)       |
-| Runner      | `database/db-run.sh` (dijalankan dari HOST)        |
+| Runner      | `database/db-run.sh` (dari HOST) |
 | Container   | `myapp-db`, port host `127.0.0.1:5433`, db `myapp` |
+| Jaringan    | `myapp-db:5432` (nama service, bisa diakses dari kontainer opencode/backend/frontend) |
 
-Penomoran saat ini: `schema/` 001–018, `seed/` 001–002. Nomor di `schema/` dan
+Penomoran saat ini: `schema/` 001–018, `seed/` 001–003. Nomor di `schema/` dan
 `seed/` independen masing-masing; urutan eksekusi selalu `schema/` dulu baru
 `seed/` (batas penomoran antar folder tidak harus sinkron).
 
@@ -25,7 +26,7 @@ Penomoran saat ini: `schema/` 001–018, `seed/` 001–002. Nomor di `schema/` d
 
 1. **Append-only migration.** Setelah file "rilis", jangan pernah edit. Setiap perubahan skema = file nomor baru berikutnya (`015_*.sql`, dst). Fungsi/trigger pakai `CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS` supaya aman.
 2. **Seed ≠ skema.** Data awal hanya di `seed/` dengan `ON CONFLICT DO NOTHING` / `UPDATE ... WHERE`. Jangan menaruh `INSERT` data awal di `schema/` lagi.
-3. **Eksekusi dari host saja.** `db-run.sh` dijalankan dari HOST (skrip `bash`; kontainer opencode tidak punya `bash`/`psql`, meski `docker` tersedia dari sana dan `git` bisa dipakai setelah izin user).
+3. **Eksekusi.** `db-run.sh` dari HOST (butuh `bash` + `docker`). Kontainer opencode TIDAK punya `docker` tetapi SUDAH punya `bash` + `psql` (di image), jadi dari sana pakai `psql` langsung (lihat "Cara menjalankan").
 4. **Kredensial** dibaca runner dari `myapp-ai/.env`. Jangan pernah menampilkan/menyalin isi `.env`.
 5. **Jangan menyentuh** `myapp-ai/note.txt`.
 
@@ -39,6 +40,27 @@ cd /workspace/myapp-ai-be/database
 ```
 
 Kerjanya: stream file `.sql` ke `docker compose exec -T myapp-db psql -U $DB_USER -d $DB_NAME`, dengan `ON_ERROR_STOP=1` (gagal = berhenti).
+
+## Cara menjalankan (dari kontainer opencode)
+
+`opencode` tidak punya `docker`, tapi ada `psql` — connect langsung ke service
+`myapp-db` lewat jaringan compose (kredensial dari `.env`, tanpa menampilkan isinya):
+
+```bash
+set -a; . /workspace/myapp-ai/.env; set +a
+PGPASSWORD="$DB_PASSWORD" psql -h myapp-db -p 5432 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1
+```
+
+Contoh jalanin seed langsung:
+
+```bash
+cd /workspace/myapp-ai-be/database
+set -a; . ../.env; set +a
+PGPASSWORD="$DB_PASSWORD" psql -h myapp-db -p 5432 -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f seed/003_products_seed.sql
+```
+
+Alternatif untuk query sederhana dari opencode: node + pustaka `pg` (harus
+di-install ulang tiap container direcreate; area `/tmp/opencode` tidak persisten).
 
 ## Checklist saat menambah tabel/object baru
 
@@ -94,7 +116,10 @@ Kerjanya: stream file `.sql` ke `docker compose exec -T myapp-db psql -U $DB_USE
 - `stock_movements` — product_id, move_type, move_date, qty (> 0), ref_id (ke dokumen asal sesuai move_type), remark.
 - `running_numbers` — counter (category, doc_date) untuk `fn_next_running_no`.
 
-Seed menu (`001_seed_master.sql`): USER, MENU, USER_MENUS (Set Akses User Menu), SYSTEM_TYPES, PRODUCT, BISNIS_PARTNER, SALES, PURCHASE, STOCK, STOCK_MOVEMENT, INFO_SALES, INFO_PURCHASE — master data `{'V','A','E','D'}`, laporan/history `{'V','X'}` / `{'V','X','P'}`.
+Seed yang ada saat ini:
+- `001_seed_master.sql` — users contoh (Admin=OWNER, Budi=USER), menus, user_menus. Menu: USER, MENU, USER_MENUS (Set Akses User Menu), SYSTEM_TYPES, PRODUCT, BISNIS_PARTNER, SALES, PURCHASE, STOCK, STOCK_MOVEMENT, INFO_SALES, INFO_PURCHASE — master data `{'V','A','E','D'}`, laporan/history `{'V','X'}` / `{'V','X','P'}`.
+- `002_auth_passwords.sql` — bcrypt login: `admin@myapp.local`/`admin123` (OWNER), `budi@myapp.local`/`budi123` (USER).
+- `003_products_seed.sql` — 50 produk (8 kategori) + stok awal lewat `stock_movements` (move_type `IN`), idempotent (produk `ON CONFLICT (sku)`; stok hanya bila produk belum punya movement).
 
 ## Known gaps (per review 2026-09-22)
 
