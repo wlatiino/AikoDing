@@ -13,6 +13,7 @@ du -sh opencodeai
 
 -- check space hardisk
 df -h /
+free -h
 sudo du -h --max-depth=1 / 2>/dev/null | sort -hr
 sudo du -h --max-depth=1 /var 2>/dev/null | sort -hr
 sudo du -h --max-depth=2 /home 2>/dev/null | sort -hr
@@ -61,4 +62,28 @@ sudo docker compose down --remove-orphans
 
 -- Check status opencode
 sudo docker exec -it opencode opencode stats
+-- Check localhost:5001 ada respon gak
+sudo docker exec -it opencode curl http://localhost:5001
+sudo docker exec -it opencode wget -qO- http://localhost:5001
 
+
+curl -v http://localhost:5001/ 
+curl -v \
+  -u 'Username:Password' \
+  -X POST \
+  'http://localhost:5001/session?directory=%2Fworkspace'
+
+
+curl -v \
+  -u 'Username:Password' \
+  -X POST \
+  'http://localhost:5001/session/ses_f2d9be89cffeZA9mfr4qTlUGhC/message' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "parts": [
+      {
+        "type": "text",
+        "text": "Baca struktur project di /workspace dan jelaskan secara singkat project ini menggunakan apa."
+      }
+    ]
+  }'  
