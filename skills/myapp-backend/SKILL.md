@@ -20,7 +20,11 @@ docker compose exec myapp-backend go build -o /tmp/myapp-check .
 docker compose logs -f myapp-backend   # lihat hasil air build/run
 ```
 
-`go`, `docker`, `curl` TIDAK tersedia di kontainer opencode — jangan coba di sini.
+`docker` dan `curl` TIDAK tersedia di kontainer opencode — jangan coba di sini. **`go` 1.26.8 SUDAH tersedia** (dicek 2026-10-07): dari kontainer opencode cukup
+
+```bash
+cd /workspace/myapp-ai-be && go build ./... && go vet ./... && go test ./...
+```
 
 ## Tes endpoint dari kontainer opencode
 
@@ -50,11 +54,35 @@ const base="http://myapp-backend:3000";
 
 ## Search API (`POST /api/<res>/search`) — dipakai semua halaman list FE
 
-- Frontend memanggil `POST /api/<res>/search` body `{ search, extra, sort, from, to }`; respons `{ data: rows }` (**bukan** `{data:{rows}}`) — FE baca `res.data?.data ?? []`.
-- Tiap resource punya `SearchX` di `internal/api/search.go` (meng-Copy ke `QueryParams`), handler terdaftar di `internal/api/router.go` (`/api/<res>/search`).
-- Query dibangun di `internal/store/query.go` via `sortOrder(qp, cols)` + `ilikeCols(search, cols, idx)` (semua kolom **pakai placeholder index SAMA**), lalu `ListX`/`SearchX` di `internal/store/*.go` menjalankan SELECT tanpa LIMIT — FE memaginasi **client-side** (`DataTable paginator :rows="10"`; klik next **tidak** menembak ulang API, itu normal).
-- **Sort wajib whitelist** — `query.go` define `productSortCols`, `partnerSortCols`, `salesSortCols`, `purchasesSortCols`, `userSortCols`, `menuSortCols` (map nama kolom → SQL, boleh `JOIN result qualifier`). Sort di luar whitelist → `ErrBadSort` → handler balas HTTP 400 `{error}`. Sort default: `name, id`.
-- Jika kolom ambigu saat join (mis. `add_on` ada di sales & journal): map sort ke qualifier tabel, e.g. `sortBy` value `"journal.add_on"`. Kueri diurutkan dengan `ORDER BY` dari sort, default fallback saat sort kosong.
+- Frontend memanggil `POST /api/<res>/search` dengan body `{ search, sort, limit, offset, ...extra }` (`extra` DataListView di-*spread* polos ke body, mis. `{from,to}`; otomatis terbaca `searchParams`). **Paginasi di server**: respons `{ data: [...], total, limit, offset }` — FE baca `res.data?.data ?? []` dan `res.data?.total` (bukan `{data:{rows}}`).
+- `limit` default **10**, maks **1000**; `offset < 0` → 0 (`NormalizeLimitOffset`, `internal/store/query.go:78`).
+- Tiap resource punya `SearchX` di `internal/api/search.go` (Copy ke `QueryParams`), handler terdaftar di `internal/api/router.go`.
+- Query dibangun di `internal/store/query.go` lewat **`BuildListQueries(qp, ...)`** → `([]models.X, total, error)`. Klausa search dipakai **sama** untuk SELECT data dan COUNT total (bug lama: count pakai kolom JOIN yang tidak dipilih data → `total` salah, `rows` null).
+- **Sort wajib whitelist** — map nama kolom → SQL di `query.go` (boleh qualifier tabel, mis. `"journal.add_on"`). Sort di luar whitelist atau sort kosong → `ErrBadSort` → HTTP 400 `{error}`. Karena itu **setiap request search wajib membawa `sort`** — jangan tes search tanpa sort.
+- Sort default: FE mengirim lewat prop `defaultSort` `DataListView` (mis. Sales/Purchases: `transaction_date` + `id` desc).
+
+## Dokumen transaksi (sales & purchases) — item ikut diubah
+
+- **Create** `CreateSales`/`CreatePurchase`: running number + header + items + mutasi stok (`SLS` -1 / `PCH` +1) dalam satu transaksi; pembelian juga memanggil `updateAvgCost` (rata-rata tertimbang, **sebelum** movement di-insert karena trigger langsung sinkron `products.qty`).
+- **Update** `UpdateSales(ctx,id,in,changeBy)` / `UpdatePurchase(...)`: satu transaksi → `lockActiveDoc` (kunci baris + wajib `status='ACTIVE'`) → tulis ulang items → hapus & tulis ulang `stock_movements` per produk (agregat) → `change_on/change_by/change_no`. Total header mengikuti trigger `trg_sync_purchase_total`/`trg_sync_sales_total` (migrasi 017) — jangan hitung manual.
+- **Delete** `DeleteSales`/`DeletePurchase`: urutan **`stock_movements` → items → header** dalam satu transaksi. FK `purchase_items.purchase_id`/`sales_items.sales_id` **tidak** punya `ON DELETE CASCADE`, jadi DELETE biasa selalu 409.
+- Harga item `0`/kosong → `resolveItemPrices` isi `price_buy` (pembelian) / `price_sell` (penjualan).
+- `avg_cost` pembelian dihitung ulang saat item berubah/dihapus (`applyAvgCost`): nilai akhir = `qtyLama*avgLama − nilaiItemLama + nilaiItemBaru`, dibagi qty akhir; stok habis → `avg_cost` dibiarkan.
+- Helper lifecycle dikumpulkan di `internal/store/transaksi.go`.
+
+### Pemetaan error (`internal/api/common.go` → `httpErr`)
+
+| Kondisi | HTTP |
+|---|---|
+| input tidak valid (`store.ValidationError`: qty 0, items kosong, produk belum dipilih) | 400 |
+| `ErrBadSort` | 400 |
+| `pgx.ErrNoRows` (id tidak ada) | 404 |
+| constraint `23503/23505/23514`, `store.ErrDocLocked` (dokumen `VOID`), trigger `P0001` (mis. "stok tidak boleh minus") | 409 |
+| sisanya | 500 |
+
+## Known gap
+
+- **Void belum membalik stok**: `VoidPurchase`/`VoidSales` hanya menyetel `status='VOID'`; `stock_movements` tidak dibalik (reversal void = pekerjaan v2). Dokumen VOID juga tidak bisa diubah/dihapus (409).
 
 ## Aturan
 

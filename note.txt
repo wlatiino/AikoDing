@@ -41,6 +41,9 @@ git remote add origin https://github.com/abc/def.git
 git remote -v
 git remote set-url origin git@github-1:abc/def.git
 
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
 git branch tahap1
 
 

@@ -76,7 +76,7 @@ di-install ulang tiap container direcreate; area `/tmp/opencode` tidak persisten
 - **Lookup** `system_types(category, code)`: `MOVEMENT_TYPE` (sign ±1), `TRANS_STATUS` (ACTIVE/VOID), `PERMISSION` (V/A/E/D/P/X), `USER_TYPE` (OWNER/SUPER_ADMIN/ADMIN/USER).
 - **RBAC**: `users.type` + `menus.permission` + `user_menus` (permission per user-menu). Trigger `003` auto-seed saat user/menu baru; `OWNER` dapat permission penuh, lainnya `'{}'`. Trigger `018` menegakkan `back_date`/`forward_date` (batas tanggal dokumen) per menu user saat insert/update `sales`/`purchases`.
 - **Stok**: `stock_movements` = sumber kebenaran (qty selalu +, arah via `move_type` → `system_types.sign`). `products.qty` = cache yang disinkronkan trigger. Trigger `014`+`015` menolak saldo minus dan mensinkronkan cache untuk `INSERT`/`UPDATE`/`DELETE`, dengan kunci baris `products` (FOR UPDATE) untuk mencegah race condition antar transaksi.
-- **Dokumen**: `sales`/`purchases` header (total, status, `no` unique) + `*_items` detail (price/total snap saat transaksi). `017` menjamin `total` item = `qty*price` (CHECK) dan total header di-sync otomatis dari item (trigger).
+- **Dokumen**: `sales`/`purchases` header (total, status, `no` unique) + `*_items` detail (price/total snap saat transaksi). `017` menjamin `total` item = `qty*price` (CHECK) dan total header di-sync otomatis dari item (trigger). **Penting**: FK `purchase_items.purchase_id` / `sales_items.sales_id` dan `stock_movements.ref_id` **tidak punya `ON DELETE CASCADE`** → hapus/ubah dokumen wajib urut `stock_movements` → `*_items` → header dalam satu transaksi (kini ditangani `internal/store/transaksi.go`, 2026-10-07).
 - **Running number**: `fn_next_running_no(p_category, p_date, p_prefix)` → atomik, format `SO-YYYYMMDD-0001`. Harus dipanggil di transaksi yang sama dengan insert dokumen.
 - **Partner**: `bisnis_partners` merged customer+supplier (nama "bisnis" memang typo yang sudah dipakai; rename harus lewat migration baru `ALTER TABLE ... RENAME TO ...`).
 
@@ -96,7 +96,7 @@ di-install ulang tiap container direcreate; area `/tmp/opencode` tidak persisten
 | Detail | produk, qty, harga, total — **harga selalu snap ke detail** saat transaksi. |
 | Stok | `stock_movements` = sumber kebenaran (ledger). `products.qty` hanya cache, di-sync trigger. |
 | Anti minus | DB-level: trigger stok `014`/`015` menolak movement bila saldo produk < 0 (ini termasuk `UPDATE`/`DELETE`, dengan lock baris `products`). |
-| Costing | **Average cost** (`products.avg_cost` di-update aplikasi). |
+| Costing | **Average cost** (`products.avg_cost` di-update aplikasi): create = rata-rata tertimbang stok lama + pembelian baru (`updateAvgCost`, dijalankan SEBELUM movement di-insert); item diedit/dihapus = roll-forward nilai (`applyAvgCost`). |
 | Kode & nama | Tabel sistem `system_types` (category, code, name, sign). `sign` hanya relevan untuk `MOVEMENT_TYPE` (+1/-1); **belum di-rename** ke field generik. |
 | Running number | Stored function `fn_next_running_no()` (atomik, `ON CONFLICT`), format `SO-YYYYMMDD-0001`. Nomor bisa diubah manual. |
 | Void/batal | `status` = kode `VOID` (baris tetap ada, jejak stok utuh). |

@@ -22,7 +22,7 @@ description: Panduan operasional frontend Vue 3 + Vite (myapp-ai-fe, aplikasi "T
 | `src/store/auth.js` | State reaktif `auth { user, menus }` dari `GET /api/me`; `hasView(menu)` = `hasPerm(menu,'V')`; `hasPerm(menu, code)` cek permission spesifik (A/E/D/P/X). |
 | `src/App.vue` | Layout sidebar + `menuMap` (kode menu DB → rute + ikon). Sidebar di-render dari `auth.menus`; tanpa 'V' → item disabled dengan ikon gembok. |
 | `src/views/*` | Satu file per halaman. `Placeholder.vue` dipakai untuk menu yang belum ada halamannya. |
-| `src/components/TransactionEditor.vue` | Editor transaksi dipakai bersama **sales & purchase** (prop `mode`). |
+| `src/components/TransactionEditor.vue` | Editor transaksi dipakai bersama **sales & purchase** (prop `mode`). **Items selalu bisa diedit** (create & edit): saat edit `loadDetail` mengisi items dari `GET /<mode>s/:id`; dokumen `VOID` tidak bisa dibuka untuk edit (dicegah di `openEdit` view + backend balas 409). Simpan: `POST /<mode>s` (create) / `PUT /<mode>s/:id` (edit, payload ikut `items`). |
 | `vite.config.js` | Plugin vue; server port 5002; proxy `/api` → host default `127.0.0.1:3001` dari kontainer, bisa dioverride `VITE_PROXY_TARGET`. |
 
 ## Alur kerja
@@ -42,12 +42,13 @@ docker compose logs -f myapp-frontend   # lihat Vite/HMR
 docker compose exec myapp-frontend sh -c "npm run build"
 ```
 
-(Coba `npm run build` dari host hanya jika user memintanya dan `package.json` ada.)
+(Coba `npm run build` dari host/`opencode` hanya jika user memintanya dan `package.json` ada — pernah diizinkan eksplisit 2026-10-07 untuk verifikasi perubahan list & editor transaksi; hasil terakhir: sukses, `✓ built in ~1s`.)
 
 ## Konvensi halaman CRUD (ikuti pola `Products.vue` / `Partners.vue`)
 
 - `rows/loading/editingId/dialogVisible/saving/error` + `emptyForm()` + `load()` + `openAdd/openEdit/save/remove`.
 - DataTable + Column; Harga pakai `InputNumber mode="currency" currency="IDR" locale="id-ID"`; Status pakai `Tag`; tombol aksi ikon `pi pi-pencil`/`pi pi-trash` ukuran kecil.
+- Sales/Purchases: `openEdit(row)` **menolak dokumen `VOID`** (alert) — backend juga membalas 409; tombol Delete dibiarkan, backend yang menolak dengan pesan jelas.
 - Error: `e.response?.data?.error || e.message`. Hapus/pakai `confirm()`/`alert()` (belum pakai ConfirmDialog).
 
 ## `DataListView.vue` — komponen list+search+sort+paginator (dipakai Products, Partners, Menus, Sales, Purchases, Users)
@@ -58,7 +59,15 @@ Props: `resource` (string, endpoint sbg `/<resource>/search`), `extra` (object, 
 
 Slot: `#filters` (isi toolbar filter atas), `#actions` (tombol Tambah dll.), default = kolom `<Column>`.
 
-Data & paging: **semua baris hasil search dimuat sekali** lalu PrimeVue `DataTable` paginate **client-side** (`paginator :rows="10"`, `v-model:first`) — klik "next" TIDAK memicu request (bukan bug, memang client-side). `v-model:multiSortMeta` + `sortMode="multiple"` → sort multi-kolom dikirim sbg `sort: [{column, order}]`. `rows` di-expose sbg `reload()` agar view bisa panggil `list.value?.reload()`. Cari pakai `InputText` + debounce (~300ms) → `POST /<resource>/search`.
+Data & paging: **paginasi SERVER-side (lazy)** — `DataListView` kirim `limit`/`offset` ke `POST /<resource>/search` dan baca `res.data.total` (respons `{data,total,limit,offset}`); `rowsPerPageOptions [10,25,50]`, page report `{first}–{last} dari {totalRecords} data`, auto kembali ke halaman 1 kalau offset sudah di luar total (baris terakhir hilang sesudah hapus). Klik "next"/ganti ukuran halaman **menembak API lagi** (memang lazy — bukan client-side lagi, bukan bug).
+
+Sort: `v-model:multiSortMeta` + `sortMode="multiple"` → `sort: [{column, sort:'asc'|'desc'}]`. **`defaultSort`** (prop, default `[{field:'id',order:-1}]`) selalu ikut dikirim selama user belum klik kolom mana pun — backend menolak search tanpa sort (400), jadi jangan pernah mengosongkan sort. Halaman ber-urutan waktu menyetel `:default-sort="[{transaction_date,-1},{id,-1}]"` (lihat `Sales.vue`/`Purchases.vue`).
+
+`reload()` di-expose (`list.value?.reload()`) dan me-reset ke halaman 1. Cari pakai `InputText` + debounce (~300ms, via `watch`) → `POST /<resource>/search`.
+
+## Jebakan PrimeVue (impor per-komponen)
+
+Template PrimeVue **di-impor di tiap SFC yang memakainya** — tidak ada registrasi global. Gejala lupa impor: komponen jadi tag HTML biasa, **tabel/kotak kosong tanpa error di console**. Contoh nyata (2026-10-07): dialog detail `Purchases.vue`/`Sales.vue` memakai `<DataTable>` tanpa `import DataTable from 'primevue/datatable'` → items tidak tampil padahal API sudah mengembalikannya. Saat menambah tag PrimeVue baru (`Dialog`, `Column`, `DataTable`, `Tag`, ...) langsung tambahkan impornya.
 
 ## Pola halaman CRUD (konvensi `Products.vue`/`Partners.vue`)
 

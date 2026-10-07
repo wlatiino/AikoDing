@@ -8,6 +8,7 @@ description: Peta proyek koordinasi folder di /workspace. Gunakan setiap kali ad
 ## Aturan wajib
 
 - **JANGAN mengubah/mengedit `myapp-ai/note.txt`.** File itu catatan operasional pribadi. Boleh dibaca sebagai referensi, tidak boleh diotak-atik.
+- Ada juga `myapp-ai-be/note.txt` dan `myapp-ai-fe/note.txt` — perlakukan sama (catatan pribadi, baca saja, jangan diedit).
 - **JANGAN menyebarkan isi `myapp-ai/.env`.** Berisi kredensial. Jangan pernah menampilkan atau menyalin isinya; paling banter `ls` untuk cek nama file.
 - Tulis kode di tempat yang benar: backend → `myapp-ai-be`, frontend → `myapp-ai-fe`, ops/deploy → `myapp-ai`.
 
@@ -16,8 +17,8 @@ description: Peta proyek koordinasi folder di /workspace. Gunakan setiap kali ad
 | Folder        | Peran                         | Isi / git                                                                                |
 | ------------- | ----------------------------- | ---------------------------------------------------------------------------------------- |
 | `myapp-ai`    | Induk / deploy & operasional  | `docker-compose.yml`, `Dockerfile`, `entrypoint.sh`, `.env`, `.env-empty`, `note.txt` (dilarang diubah). Repo git utama. |
-| `myapp-ai-be` | BackEnd (Go)                  | Masih kosong; bakal punya repo git sendiri.                                              |
-| `myapp-ai-fe` | FrontEnd (Vite/Node)          | Baru `node_modules`; bakal punya repo git sendiri.                                        |
+| `myapp-ai-be` | BackEnd (Go)                  | Aplikasi Go lengkap: `main.go`, `internal/` (api, store, models, db), `database/` (schema/seed + `db-run.sh`), `Dockerfile`, `go.mod`, `tmp/` (scratch, gitignored). |
+| `myapp-ai-fe` | FrontEnd (Vite/Node)          | Aplikasi Vue 3: `src/`, `package.json`, `vite.config.js`, `nginx.conf`, `Dockerfile`, `dist/` hasil build. `node_modules` ikut bind-mount — jangan ditulis dari luar container. |
 
 ## Alur kerja (koordinasi)
 
@@ -43,9 +44,11 @@ description: Peta proyek koordinasi folder di /workspace. Gunakan setiap kali ad
 
 ## Yang TIDAK bisa dieksekusi dari sini (tanpa konteks container lain)
 
-Fakta lingkungan kontainer opencode (image terakhir): TERSEDIA `bash`, `psql`, `node`, `npm`, `sh`, `git`. TIDAK tersedia: `docker`, `go`, `curl`, `python3`. Jadi:
+Fakta lingkungan kontainer opencode (dicek ulang 2026-10-07): TERSEDIA `bash`, `psql`, `node`, `npm`, `sh`, `git`, **`go` 1.26.8**. TIDAK tersedia: `docker`, `curl`, `python3`. Jadi:
 
-- `go build`/`go vet`/`air` jalankan lewat container backend: `docker compose exec myapp-backend go build -o /tmp/myapp-check .` (perintah dijalankan dari HOST).
+- `go build ./...` / `go vet ./...` / `go test ./...` **bisa langsung** dijalankan dari sini di `/workspace/myapp-ai-be`. Live-reload tetap milik container backend (`air`): perubahan kode menunggu reload — kalau perlu lihat hasil build-nya, minta `docker compose logs -f myapp-backend` dari HOST.
+- Verifikasi endpoint tetap dari sini pakai `node` (fetch) ke `http://myapp-backend:3000` — detail di skill `myapp-backend`.
+- `docker compose ...` (start/stop/log/build) jalankan dari HOST (`/workspace/myapp-ai`):
 - Untuk `git`: tersedia tapi butuh izin (permission opencode). Bisa langsung `git add -A && git commit -m "..."` setelah user memberi izin; jangan commit tanpa diminta.
 
 ## Portability (VPS baru)
